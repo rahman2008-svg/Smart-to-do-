@@ -2,19 +2,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- 🔥 REQUIRED PERMISSIONS -->
+    <!-- 🔥 NOTIFICATIONS (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Android 13+ notification permission -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- 🔥 EXACT ALARM (Android 12+) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
-    <!-- Exact alarm permission (Android 12+) -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <!-- 🔥 FULL SCREEN ALARM -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
-    <!-- Full screen alarm / ringing support -->
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <!-- 🔥 BOOT RESTORE -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- Optional but useful for boot restart alarms -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- 🔥 OPTIONAL: for reliable foreground alarm behavior -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <application
         android:allowBackup="true"
@@ -26,34 +27,56 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication">
 
-        <!-- 🔥 MAIN ACTIVITY -->
+        <!-- =========================
+             MAIN ACTIVITY
+        ========================== -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.MyApplication">
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
         </activity>
 
-        <!-- 🔥 ALARM RECEIVER (IMPORTANT) -->
+        <!-- =========================
+             ALARM RECEIVERS
+        ========================== -->
+
         <receiver
             android:name=".notification.TaskReminderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".notification.SnoozeTaskReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".notification.CompleteTaskReceiver"
             android:exported="false" />
 
         <receiver
             android:name=".notification.DailyReminderReceiver"
             android:exported="false" />
 
-        <!-- 🔥 BOOT RECEIVER (optional but recommended) -->
+        <!-- =========================
+             BOOT RECEIVER (FIXED)
+        ========================== -->
         <receiver
             android:name=".notification.BootReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+            android:exported="true"
+            android:enabled="true"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+
+            <intent-filter android:priority="999">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
             </intent-filter>
+
         </receiver>
 
     </application>
