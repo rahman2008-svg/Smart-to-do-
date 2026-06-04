@@ -12,7 +12,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.example.MainActivity
-import com.example.R
 import com.example.data.model.Task
 
 class NotificationHelper(private val context: Context) {
@@ -31,23 +30,21 @@ class NotificationHelper(private val context: Context) {
         createNotificationChannels()
     }
 
-    // 🔥 CHECK PERMISSION (Android 13+)
+    // 🔥 Permission check (Android 13+)
     private fun canPostNotification(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true
-        }
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
     }
 
-    // 🔥 CREATE CHANNELS (REQUIRED)
+    // 🔥 Channel creation
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
 
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val manager =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
             val taskChannel = NotificationChannel(
                 CHANNEL_TASK_ALERTS_ID,
@@ -71,7 +68,7 @@ class NotificationHelper(private val context: Context) {
         }
     }
 
-    // 🔥 TASK NOTIFICATION (MAIN)
+    // 🔥 MAIN TASK NOTIFICATION
     fun showTaskNotification(task: Task) {
 
         if (!canPostNotification()) return
@@ -88,7 +85,6 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // ✔ COMPLETE ACTION
         val completeIntent = Intent(context, CompleteTaskReceiver::class.java).apply {
             action = ACTION_MARK_COMPLETE
             putExtra(EXTRA_TASK_ID, task.id)
@@ -101,7 +97,6 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // ✔ SNOOZE ACTION
         val snoozeIntent = Intent(context, SnoozeTaskReceiver::class.java).apply {
             action = ACTION_SNOOZE
             putExtra(EXTRA_TASK_ID, task.id)
@@ -126,10 +121,14 @@ class NotificationHelper(private val context: Context) {
             .addAction(android.R.drawable.ic_menu_recent_history, "Snooze", snoozePendingIntent)
             .build()
 
-        NotificationManagerCompat.from(context).notify(task.id, notification)
+        try {
+            NotificationManagerCompat.from(context).notify(task.id, notification)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
-    // 🔥 DAILY SUMMARY NOTIFICATION
+    // 🔥 DAILY SUMMARY
     fun showDailySummary(todayCount: Int, highPriorityCount: Int) {
 
         if (!canPostNotification()) return
@@ -158,6 +157,10 @@ class NotificationHelper(private val context: Context) {
             .setAutoCancel(true)
             .build()
 
-        NotificationManagerCompat.from(context).notify(9999, notification)
+        try {
+            NotificationManagerCompat.from(context).notify(9999, notification)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }
