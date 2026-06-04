@@ -1,12 +1,14 @@
 package com.example
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -25,14 +27,19 @@ import com.example.ui.theme.MyApplicationTheme
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        private const val NOTIFICATION_PERMISSION_CODE = 1001
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         enableEdgeToEdge()
 
-        // 🔥 REQUEST NOTIFICATION PERMISSION (Android 13+)
+        // 🔥 SAFE PERMISSION CHECK
         askNotificationPermission()
 
-        // Initialize local Room DB
+        // DB init
         val database = NoteDatabase.getDatabase(applicationContext)
         val noteDao = database.noteDao()
         val labelDao = database.labelDao()
@@ -56,18 +63,19 @@ class MainActivity : ComponentActivity() {
             deleteLabel = DeleteLabelUseCase(labelRepository)
         )
 
-        // ViewModel
         val factory = NoteViewModelFactory(noteUseCases, labelUseCases)
         val viewModel = ViewModelProvider(this, factory)[NoteViewModel::class.java]
 
         setContent {
             MyApplicationTheme {
+
                 val navController = rememberNavController()
 
                 NavHost(
                     navController = navController,
                     startDestination = "home"
                 ) {
+
                     composable("home") {
                         HomeScreen(
                             viewModel = viewModel,
@@ -84,7 +92,8 @@ class MainActivity : ComponentActivity() {
                         })
                     ) { backStackEntry ->
 
-                        val noteId = backStackEntry.arguments?.getLong("noteId") ?: -1L
+                        val noteId =
+                            backStackEntry.arguments?.getLong("noteId") ?: -1L
 
                         NoteEditScreen(
                             noteId = noteId,
@@ -99,14 +108,45 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // 🔥 IMPORTANT: Android 13+ permission handler
+    // 🔥 IMPROVED PERMISSION HANDLING
     private fun askNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+
+        val alreadyGranted = ContextCompat.checkSelfPermission(
+            this,
+            permission
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!alreadyGranted) {
+
             ActivityCompat.requestPermissions(
                 this,
-                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                1001
+                arrayOf(permission),
+                NOTIFICATION_PERMISSION_CODE
             )
+        }
+    }
+
+    // 🔥 OPTIONAL: handle result (recommended)
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        if (requestCode == NOTIFICATION_PERMISSION_CODE) {
+
+            val granted = grantResults.isNotEmpty() &&
+                    grantResults[0] == PackageManager.PERMISSION_GRANTED
+
+            if (!granted) {
+                // optional: log or fallback behavior
+                // notifications will simply not show
+            }
         }
     }
 }
