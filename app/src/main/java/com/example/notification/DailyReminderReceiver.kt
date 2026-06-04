@@ -20,41 +20,44 @@ class DailyReminderReceiver : BroadcastReceiver() {
         val taskDao = database.taskDao()
         val notificationHelper = NotificationHelper(context)
 
-        // 🔥 SAFE SCOPE (no leak, crash safe)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         scope.launch {
 
             try {
 
-                // 🔥 Get today start/end range
-                val calendar = Calendar.getInstance().apply {
+                // =========================
+                // 🔥 TODAY RANGE (clean)
+                // =========================
+                val startOfDay = Calendar.getInstance().apply {
                     set(Calendar.HOUR_OF_DAY, 0)
                     set(Calendar.MINUTE, 0)
                     set(Calendar.SECOND, 0)
                     set(Calendar.MILLISECOND, 0)
-                }
-                val startOfDay = calendar.timeInMillis
+                }.timeInMillis
 
-                calendar.apply {
+                val endOfDay = Calendar.getInstance().apply {
                     set(Calendar.HOUR_OF_DAY, 23)
                     set(Calendar.MINUTE, 59)
                     set(Calendar.SECOND, 59)
                     set(Calendar.MILLISECOND, 999)
-                }
-                val endOfDay = calendar.timeInMillis
+                }.timeInMillis
 
-                // 🔥 Direct list query (NO Flow.first())
+                // =========================
+                // 🔥 DATA FETCH (LIST ONLY)
+                // =========================
                 val todayTasks =
                     taskDao.getTasksForDateRangeList(startOfDay, endOfDay)
 
                 val activeTasks = todayTasks.filter { !it.isCompleted }
 
                 val highPriorityCount =
-                    activeTasks.count { it.priority.equals("High", true) }
+                    activeTasks.count { it.priority.equals("High", ignoreCase = true) }
 
-                // 🔥 Send summary notification
-                notificationHelper.showDailySummaryNotification(
+                // =========================
+                // 🔥 NOTIFICATION
+                // =========================
+                notificationHelper.showDailySummary(
                     todayCount = activeTasks.size,
                     highPriorityCount = highPriorityCount
                 )
