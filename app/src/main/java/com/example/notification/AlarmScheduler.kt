@@ -11,10 +11,13 @@ import java.util.Calendar
 
 class AlarmScheduler(private val context: Context) {
 
-    private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    private val alarmManager =
+        context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
+    // 🔥 TASK ALARM (EXACT + SAFE)
     @SuppressLint("ScheduleExactAlarm")
     fun scheduleTaskAlarm(task: Task) {
+
         val triggerTime = task.reminderTime ?: return
         if (triggerTime < System.currentTimeMillis()) return
 
@@ -30,63 +33,81 @@ class AlarmScheduler(private val context: Context) {
         )
 
         try {
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+
                 if (alarmManager.canScheduleExactAlarms()) {
+
                     alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
                         triggerTime,
                         pendingIntent
                     )
+
                 } else {
+
+                    // fallback (less accurate but safe)
                     alarmManager.setAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
                         triggerTime,
                         pendingIntent
                     )
                 }
+
             } else {
+
                 alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
                     triggerTime,
                     pendingIntent
                 )
             }
-        } catch (e: SecurityException) {
-            // Safe fallback if exact alarm permission is denied at runtime
-            alarmManager.setAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                triggerTime,
-                pendingIntent
-            )
+
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
+    // 🔥 SAFE CANCEL (FIXED)
     fun cancelTaskAlarm(task: Task) {
+
         val intent = Intent(context, TaskReminderReceiver::class.java)
+
         val pendingIntent = PendingIntent.getBroadcast(
             context,
             task.id,
             intent,
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        if (pendingIntent != null) {
+
+        try {
             alarmManager.cancel(pendingIntent)
             pendingIntent.cancel()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
+    // 🔥 DAILY REMINDER (RELIABLE VERSION)
+    @SuppressLint("ScheduleExactAlarm")
     fun scheduleDailyReminder(hour: Int, minute: Int) {
+
         val calendar = Calendar.getInstance().apply {
+
             timeInMillis = System.currentTimeMillis()
+
             set(Calendar.HOUR_OF_DAY, hour)
             set(Calendar.MINUTE, minute)
             set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+
             if (timeInMillis <= System.currentTimeMillis()) {
                 add(Calendar.DAY_OF_YEAR, 1)
             }
         }
 
         val intent = Intent(context, DailyReminderReceiver::class.java)
+
         val pendingIntent = PendingIntent.getBroadcast(
             context,
             9999,
@@ -95,12 +116,26 @@ class AlarmScheduler(private val context: Context) {
         )
 
         try {
-            alarmManager.setInexactRepeating(
-                AlarmManager.RTC_WAKEUP,
-                calendar.timeInMillis,
-                AlarmManager.INTERVAL_DAY,
-                pendingIntent
-            )
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                !alarmManager.canScheduleExactAlarms()
+            ) {
+                // fallback
+                alarmManager.setInexactRepeating(
+                    AlarmManager.RTC_WAKEUP,
+                    calendar.timeInMillis,
+                    AlarmManager.INTERVAL_DAY,
+                    pendingIntent
+                )
+            } else {
+
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    calendar.timeInMillis,
+                    pendingIntent
+                )
+            }
+
         } catch (e: Exception) {
             e.printStackTrace()
         }
