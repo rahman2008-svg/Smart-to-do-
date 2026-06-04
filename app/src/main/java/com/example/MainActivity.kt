@@ -7,7 +7,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.core.app.ActivityCompat
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavType
@@ -27,28 +27,33 @@ import com.example.ui.theme.MyApplicationTheme
 
 class MainActivity : ComponentActivity() {
 
-    companion object {
-        private const val NOTIFICATION_PERMISSION_CODE = 1001
-    }
+    // 🔥 Modern permission launcher (BEST PRACTICE)
+    private val notificationPermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { isGranted ->
+            if (!isGranted) {
+                // optional fallback logic
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         enableEdgeToEdge()
 
-        // 🔥 SAFE PERMISSION CHECK
         askNotificationPermission()
 
-        // DB init
+        // =========================
+        // DB INIT
+        // =========================
         val database = NoteDatabase.getDatabase(applicationContext)
         val noteDao = database.noteDao()
         val labelDao = database.labelDao()
 
-        // Repositories
         val noteRepository = NoteRepositoryImpl(noteDao)
         val labelRepository = LabelRepositoryImpl(labelDao)
 
-        // UseCases
         val noteUseCases = NoteUseCases(
             getAllNotes = GetAllNotesUseCase(noteRepository),
             getNote = GetNoteUseCase(noteRepository),
@@ -66,6 +71,9 @@ class MainActivity : ComponentActivity() {
         val factory = NoteViewModelFactory(noteUseCases, labelUseCases)
         val viewModel = ViewModelProvider(this, factory)[NoteViewModel::class.java]
 
+        // =========================
+        // UI
+        // =========================
         setContent {
             MyApplicationTheme {
 
@@ -92,8 +100,7 @@ class MainActivity : ComponentActivity() {
                         })
                     ) { backStackEntry ->
 
-                        val noteId =
-                            backStackEntry.arguments?.getLong("noteId") ?: -1L
+                        val noteId = backStackEntry.arguments?.getLong("noteId") ?: -1L
 
                         NoteEditScreen(
                             noteId = noteId,
@@ -108,45 +115,20 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // 🔥 IMPROVED PERMISSION HANDLING
+    // 🔥 MODERN PERMISSION HANDLING
     private fun askNotificationPermission() {
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
 
         val permission = Manifest.permission.POST_NOTIFICATIONS
 
-        val alreadyGranted = ContextCompat.checkSelfPermission(
+        val granted = ContextCompat.checkSelfPermission(
             this,
             permission
         ) == PackageManager.PERMISSION_GRANTED
 
-        if (!alreadyGranted) {
-
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(permission),
-                NOTIFICATION_PERMISSION_CODE
-            )
-        }
-    }
-
-    // 🔥 OPTIONAL: handle result (recommended)
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-
-        if (requestCode == NOTIFICATION_PERMISSION_CODE) {
-
-            val granted = grantResults.isNotEmpty() &&
-                    grantResults[0] == PackageManager.PERMISSION_GRANTED
-
-            if (!granted) {
-                // optional: log or fallback behavior
-                // notifications will simply not show
-            }
+        if (!granted) {
+            notificationPermissionLauncher.launch(permission)
         }
     }
 }
