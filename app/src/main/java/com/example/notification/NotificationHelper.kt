@@ -1,13 +1,16 @@
 package com.example.notification
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.data.model.Task
@@ -17,8 +20,9 @@ class NotificationHelper(private val context: Context) {
     companion object {
         const val CHANNEL_TASK_ALERTS_ID = "channel_task_alerts"
         const val CHANNEL_DAILY_REMINDERS_ID = "channel_daily_reminders"
-        
+
         const val EXTRA_TASK_ID = "extra_task_id"
+
         const val ACTION_MARK_COMPLETE = "com.example.notification.ACTION_MARK_COMPLETE"
         const val ACTION_SNOOZE = "com.example.notification.ACTION_SNOOZE"
     }
@@ -27,40 +31,56 @@ class NotificationHelper(private val context: Context) {
         createNotificationChannels()
     }
 
+    // 🔥 CHECK PERMISSION (Android 13+)
+    private fun canPostNotification(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
+
+    // 🔥 CREATE CHANNELS (REQUIRED)
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-            // Task Alerts Channel
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
             val taskChannel = NotificationChannel(
                 CHANNEL_TASK_ALERTS_ID,
                 "Task Reminders",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Critical alerts and reminders for your scheduled tasks"
+                description = "Task alerts and reminders"
                 enableVibration(true)
             }
-            notificationManager.createNotificationChannel(taskChannel)
 
-            // Daily Planner Digest Channel
             val dailyChannel = NotificationChannel(
                 CHANNEL_DAILY_REMINDERS_ID,
-                "Daily Digests",
+                "Daily Summary",
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
-                description = "Daily summaries and planner morning digests"
+                description = "Daily task summary notifications"
             }
-            notificationManager.createNotificationChannel(dailyChannel)
+
+            manager.createNotificationChannel(taskChannel)
+            manager.createNotificationChannel(dailyChannel)
         }
     }
 
+    // 🔥 TASK NOTIFICATION (MAIN)
     fun showTaskNotification(task: Task) {
+
+        if (!canPostNotification()) return
+
         val clickIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             putExtra(EXTRA_TASK_ID, task.id)
         }
-        
-        // Use unique requestCodes for safety with Alarm intents
+
         val clickPendingIntent = PendingIntent.getActivity(
             context,
             task.id,
@@ -68,55 +88,54 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Mark Completed Action
+        // ✔ COMPLETE ACTION
         val completeIntent = Intent(context, CompleteTaskReceiver::class.java).apply {
             action = ACTION_MARK_COMPLETE
             putExtra(EXTRA_TASK_ID, task.id)
         }
+
         val completePendingIntent = PendingIntent.getBroadcast(
             context,
-            task.id + 100000,
+            task.id + 1000,
             completeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Snooze Action (Snoozes for 15 minutes)
+        // ✔ SNOOZE ACTION
         val snoozeIntent = Intent(context, SnoozeTaskReceiver::class.java).apply {
             action = ACTION_SNOOZE
             putExtra(EXTRA_TASK_ID, task.id)
         }
+
         val snoozePendingIntent = PendingIntent.getBroadcast(
             context,
-            task.id + 200000,
+            task.id + 2000,
             snoozeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val builder = NotificationCompat.Builder(context, CHANNEL_TASK_ALERTS_ID)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm) // Safe system fallback icon
-            .setContentTitle("Task Reminder: ${task.title}")
+        val notification = NotificationCompat.Builder(context, CHANNEL_TASK_ALERTS_ID)
+            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setContentTitle("Task: ${task.title}")
             .setContentText(task.description.ifBlank { "Priority: ${task.priority}" })
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setContentIntent(clickPendingIntent)
             .setAutoCancel(true)
-            .addAction(android.R.drawable.checkbox_on_background, "Mark Done", completePendingIntent)
-            .addAction(android.R.drawable.ic_menu_recent_history, "Snooze (15m)", snoozePendingIntent)
+            .addAction(android.R.drawable.checkbox_on_background, "Done", completePendingIntent)
+            .addAction(android.R.drawable.ic_menu_recent_history, "Snooze", snoozePendingIntent)
+            .build()
 
-        try {
-            // Under Android 13 (API 33)+, must check post notification permissions.
-            // Let's rely on standard try-catch or framework checks.
-            val notificationManager = NotificationManagerCompat.from(context)
-            notificationManager.notify(task.id, builder.build())
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        NotificationManagerCompat.from(context).notify(task.id, notification)
     }
 
-    fun showDailySummaryNotification(todayCount: Int, highPriorityCount: Int) {
-        val clickIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
+    // 🔥 DAILY SUMMARY NOTIFICATION
+    fun showDailySummary(todayCount: Int, highPriorityCount: Int) {
+
+        if (!canPostNotification()) return
+
+        val clickIntent = Intent(context, MainActivity::class.java)
+
         val clickPendingIntent = PendingIntent.getActivity(
             context,
             9999,
@@ -125,24 +144,20 @@ class NotificationHelper(private val context: Context) {
         )
 
         val message = if (todayCount > 0) {
-            "You have $todayCount tasks scheduled for today, including $highPriorityCount high priority ones!"
+            "Today: $todayCount tasks, $highPriorityCount high priority"
         } else {
-            "No tasks scheduled for today! Time to plan your day."
+            "No tasks today. Plan your day!"
         }
 
-        val builder = NotificationCompat.Builder(context, CHANNEL_DAILY_REMINDERS_ID)
+        val notification = NotificationCompat.Builder(context, CHANNEL_DAILY_REMINDERS_ID)
             .setSmallIcon(android.R.drawable.ic_menu_today)
-            .setContentTitle("Your Day At A Glance ☀️")
+            .setContentTitle("Daily Summary")
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(clickPendingIntent)
             .setAutoCancel(true)
+            .build()
 
-        try {
-            val notificationManager = NotificationManagerCompat.from(context)
-            notificationManager.notify(9999, builder.build())
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        NotificationManagerCompat.from(context).notify(9999, notification)
     }
 }
