@@ -6,20 +6,28 @@ import android.content.Intent
 import com.example.data.local.AppDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
 class DailyReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val pendingResult = goAsync()
+
+        val result = goAsync()
+
         val database = AppDatabase.getDatabase(context)
         val taskDao = database.taskDao()
         val notificationHelper = NotificationHelper(context)
 
-        CoroutineScope(Dispatchers.IO).launch {
+        // 🔥 SAFE SCOPE (no leak, crash safe)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        scope.launch {
+
             try {
+
+                // 🔥 Get today start/end range
                 val calendar = Calendar.getInstance().apply {
                     set(Calendar.HOUR_OF_DAY, 0)
                     set(Calendar.MINUTE, 0)
@@ -27,7 +35,7 @@ class DailyReminderReceiver : BroadcastReceiver() {
                     set(Calendar.MILLISECOND, 0)
                 }
                 val startOfDay = calendar.timeInMillis
-                
+
                 calendar.apply {
                     set(Calendar.HOUR_OF_DAY, 23)
                     set(Calendar.MINUTE, 59)
@@ -36,19 +44,30 @@ class DailyReminderReceiver : BroadcastReceiver() {
                 }
                 val endOfDay = calendar.timeInMillis
 
-                // Retrieve tasks flow first emission synchronizing list
-                val todayTasks = taskDao.getTasksForDateRange(startOfDay, endOfDay).first()
-                val activeTasks = todayTasks.filter { !it.isCompleted }
-                val highPriorityCount = activeTasks.count { it.priority.equals("High", ignoreCase = true) }
+                // 🔥 Direct list query (NO Flow.first())
+                val todayTasks =
+                    taskDao.getTasksForDateRangeList(startOfDay, endOfDay)
 
+                val activeTasks = todayTasks.filter { !it.isCompleted }
+
+                val highPriorityCount =
+                    activeTasks.count { it.priority.equals("High", true) }
+
+                // 🔥 Send summary notification
                 notificationHelper.showDailySummaryNotification(
                     todayCount = activeTasks.size,
                     highPriorityCount = highPriorityCount
                 )
+
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
-                pendingResult.finish()
+
+                try {
+                    result.finish()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
     }
