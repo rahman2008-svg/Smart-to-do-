@@ -15,7 +15,9 @@ class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
 
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED &&
+            intent.action != Intent.ACTION_LOCKED_BOOT_COMPLETED
+        ) return
 
         val result = goAsync()
 
@@ -24,7 +26,6 @@ class BootReceiver : BroadcastReceiver() {
         val preferenceManager = PreferenceManager(context)
         val alarmScheduler = AlarmScheduler(context)
 
-        // 🔥 SAFE SCOPE
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         scope.launch {
@@ -32,39 +33,37 @@ class BootReceiver : BroadcastReceiver() {
             try {
 
                 // =========================
-                // 🔥 1. Restore Daily Alarm
+                // 🔥 Restore Daily Alarm
                 // =========================
                 val dailyEnabled =
                     preferenceManager.dailyReminderEnabledFlow.first()
 
                 if (dailyEnabled) {
 
+                    // ❌ FIX: no firstOrNull()
                     val dailyTime =
-                        preferenceManager.dailyReminderTimeFlow.firstOrNull() ?: "08:00"
+                        preferenceManager.dailyReminderTimeFlow.first()
 
                     val parts = dailyTime.split(":")
 
-                    if (parts.size == 2) {
+                    val hour = parts.getOrNull(0)?.toIntOrNull() ?: 8
+                    val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
 
-                        val hour = parts[0].toIntOrNull() ?: 8
-                        val minute = parts[1].toIntOrNull() ?: 0
-
-                        alarmScheduler.scheduleDailyReminder(hour, minute)
-                    }
+                    alarmScheduler.scheduleDailyReminder(hour, minute)
                 }
 
                 // =========================
-                // 🔥 2. Restore Task Alarms
+                // 🔥 Restore Task Alarms
                 // =========================
                 val now = System.currentTimeMillis()
 
+                // IMPORTANT: must be suspend List function
                 val upcomingTasks =
                     taskDao.getUpcomingTasksList(now)
 
                 for (task in upcomingTasks) {
 
-                    if (task.reminderTime != null && !task.isCompleted) {
-
+                    if (!task.isCompleted && task.reminderTime != null) {
                         alarmScheduler.scheduleTaskAlarm(task)
                     }
                 }
@@ -72,7 +71,6 @@ class BootReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
-
                 try {
                     result.finish()
                 } catch (e: Exception) {
